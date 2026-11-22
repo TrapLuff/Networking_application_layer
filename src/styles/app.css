@@ -1,0 +1,157 @@
+:root {
+  color-scheme: dark;
+  --color-page: #202020;
+  --color-workspace: #181818;
+  --color-card: #242424;
+  --color-border: #353535;
+  --color-text: #fafafa;
+  --color-muted: #b8b8b8;
+  --color-accent: #4777e1;
+  --color-accent-hover: #3866cd;
+  --color-on-accent: #fff;
+  --color-error: #ffb4a8;
+  --color-error-surface: #2a2020;
+  --color-error-border: #754941;
+  --control-width: 502px;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: var(--color-page);
+  color: var(--color-text);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding: 0 24px 20px;
+}
+
+.app-header,
+.session-actions {
+  display: flex;
+  align-items: center;
+}
+
+.app-header {
+  min-height: 52px;
+  padding: 8px 0;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.app-title,
+.session-user {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.session-user {
+  overflow-wrap: anywhere;
+}
+
+.session-actions {
+  gap: 12px;
+}
+
+.workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 16px 24px;
+  border-radius: 34px;
+  background: var(--color-workspace);
+}
+
+.app-button.MuiButton-root {
+  min-height: 32px;
+  padding: 5px 16px;
+  border-radius: 10px;
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  font: 700 15px / 1.2 "Segoe UI", Arial, sans-serif;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.app-button.MuiButton-root:hover {
+  background: var(--color-accent-hover);
+}
+
+.app-button.MuiButton-root.Mui-disabled {
+  color: #979797;
+  background: #353535;
+}
+
+.app-button.Mui-focusVisible {
+  outline: 2px solid var(--color-on-accent);
+  outline-offset: 2px;
+}
+
+.session-button.MuiButton-root {
+  min-width: 88px;
+}
+
+.session-loading {
+  margin: auto;
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 18px;
+  aspect-ratio: 1;
+  border: 2px solid var(--color-accent);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+.session-loading .loading-spinner {
+  width: 26px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner {
+    animation: none;
+  }
+}
+
+.app-alert.MuiAlert-root {
+  color: var(--color-error);
+  background: var(--color-error-surface);
+  font-family: inherit;
+}
+
+.app-alert .MuiAlert-icon {
+  color: inherit;
+}
+
+.logout-alert {
+  width: min(100%, var(--control-width));
+  margin: 0 auto 16px;
+}
+
+@media (max-width: 599px) {
+  .app-shell {
+    padding: 0 12px 12px;
+  }
+
+  .workspace {
+    padding-inline: 12px;
+    border-radius: 22px;
+  }
+}

@@ -1,0 +1,320 @@
+openapi: 3.1.0
+info:
+  title: Создание структуры документа
+  version: 0.1.0
+  description: Прикладной API и временный контракт заглушки транспорта.
+servers:
+  - url: http://127.0.0.1:3000
+    description: Прикладной сервер
+paths:
+  /api/session:
+    get:
+      summary: Получить пользователя текущей сессии
+      responses:
+        '200':
+          description: Пользователь или null
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+              examples:
+                authenticated:
+                  value:
+                    user: {login: loadjik, name: Лоуджик}
+                anonymous:
+                  value: {user: null}
+  /api/login:
+    post:
+      summary: Войти и получить cookie сессии
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [login]
+              properties:
+                login: {type: string, minLength: 1}
+            example: {login: loadjik}
+      responses:
+        '200':
+          description: Вход выполнен
+          headers:
+            Set-Cookie:
+              schema: {type: string}
+              description: Cookie outline.sid с атрибутами HttpOnly и SameSite=Lax.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user: {$ref: '#/components/schemas/User'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+  /api/logout:
+    post:
+      summary: Завершить сессию и закрыть её SSE-потоки
+      security:
+        - sessionCookie: []
+        - {}
+      responses:
+        '204':
+          description: Сессия завершена, cookie удалена. Повторный выход также возвращает 204.
+  /api/generate:
+    post:
+      summary: Отправить тему документа
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Topic'}
+            example: {document_topic: Внедрение ИИ в современную медицину}
+      responses:
+        '202':
+          description: Тема принята транспортом. Результат придёт по SSE.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [timestamp]
+                properties:
+                  timestamp: {$ref: '#/components/schemas/Timestamp'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '409':
+          description: У сессии нет открытого SSE-потока.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
+        '502':
+          description: Транспорт недоступен или отклонил запрос.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
+  /api/v1/send:
+    servers:
+      - url: http://127.0.0.1:4000
+        description: Заглушка транспорта
+    post:
+      operationId: send
+      summary: Принять тему для генерации структуры
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/MessageId'}
+                - {$ref: '#/components/schemas/Topic'}
+            example:
+              sender: loadjik
+              timestamp: 1760000000123
+              document_topic: Внедрение ИИ в современную медицину
+      responses:
+        '200':
+          description: Go-транспорт принял тему и продолжает обработку асинхронно.
+        '202':
+          description: Тема принята. Заглушка передаёт готовые разделы последовательными вызовами Receive.
+        '400': {$ref: '#/components/responses/Error'}
+  /api/receive:
+    post:
+      operationId: receive
+      summary: Принять часть структуры, полный результат или сообщение об ошибке
+      description: >-
+        Части содержат целые разделы. Две метки части указываются вместе, нумерация начинается с 1.
+        Результат завершён, когда получены все уникальные части. Полный результат без меток принимается
+        до получения первой части. Ошибка завершает запрос, а ранее доставленные разделы остаются в браузере.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReceiveResult'}
+            examples:
+              part:
+                value:
+                  sender: loadjik
+                  timestamp: 1760000000123
+                  error: false
+                  part_number: 1
+                  total_parts: 2
+                  payload: |-
+                    1. Введение
+                    1.1. Цель и задачи
+              success:
+                value:
+                  sender: loadjik
+                  timestamp: 1760000000123
+                  error: false
+                  payload: |-
+                    1. Введение
+                    1.1. Цель и задачи
+                    2. Заключение
+              failure:
+                value: {sender: loadjik, timestamp: 1760000000123, error: true, payload: null}
+      responses:
+        '200':
+          description: Результат принят. Идентичный повтор части активного запроса не создаёт нового SSE-события.
+        '400': {$ref: '#/components/responses/Error'}
+        '404':
+          description: Пара sender и timestamp не соответствует активному запросу.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
+        '409':
+          description: Часть противоречит уже полученным данным.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
+  /api/events:
+    get:
+      summary: Открыть поток результатов для текущей сессии
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: >-
+            Событие outline содержит JSON в поле data. При наличии progress поле payload содержит
+            все полученные разделы в порядке частей. Равенство received и total означает завершение.
+            У события об ошибке payload равен null. Сервер поддерживает открытое соединение комментариями.
+            События при переподключении не повторяются.
+          content:
+            text/event-stream:
+              schema: {type: string}
+              examples:
+                part:
+                  value: |
+                    event: outline
+                    data: {"sender":"loadjik","timestamp":1760000000123,"error":false,"payload":"1. Введение\n1.1. Цель и задачи","progress":{"received":1,"total":2}}
+
+                success:
+                  value: |
+                    event: outline
+                    data: {"sender":"loadjik","timestamp":1760000000123,"error":false,"payload":"1. Введение\n1.1. Цель и задачи\n2. Заключение","progress":{"received":2,"total":2}}
+
+                failure:
+                  value: |
+                    event: outline
+                    data: {"sender":"loadjik","timestamp":1760000000123,"error":true,"payload":null}
+
+                timeout:
+                  value: |
+                    event: outline
+                    data: {"sender":"loadjik","timestamp":1760000000123,"error":true,"payload":null,"reason":"timeout"}
+
+        '401': {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: outline.sid
+  responses:
+    Error:
+      description: Запрос отклонён.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+  schemas:
+    ApiError:
+      type: object
+      required: [message]
+      properties:
+        message: {type: string}
+    User:
+      type: object
+      required: [login, name]
+      properties:
+        login: {type: string}
+        name: {type: string}
+    Session:
+      type: object
+      required: [user]
+      properties:
+        user:
+          oneOf:
+            - {$ref: '#/components/schemas/User'}
+            - {type: 'null'}
+    Timestamp:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9007199254740991
+      description: Временная метка в миллисекундах Unix и идентификатор запроса.
+    MessageId:
+      type: object
+      required: [sender, timestamp]
+      properties:
+        sender:
+          type: string
+          minLength: 1
+          description: Логин из сессии автора.
+        timestamp: {$ref: '#/components/schemas/Timestamp'}
+    Topic:
+      type: object
+      required: [document_topic]
+      properties:
+        document_topic: {type: string, minLength: 1, maxLength: 300}
+    Result:
+      allOf:
+        - {$ref: '#/components/schemas/MessageId'}
+        - type: object
+          required: [error, payload]
+          oneOf:
+            - properties:
+                error: {const: false}
+                payload:
+                  type: string
+                  minLength: 1
+                  description: Нумерованный текст. Каждый раздел или подраздел начинается с новой строки.
+            - properties:
+                error: {const: true}
+                payload: {type: 'null'}
+    PartCount:
+      type: integer
+      minimum: 1
+      maximum: 64
+    ReceiveResult:
+      allOf:
+        - {$ref: '#/components/schemas/Result'}
+        - properties:
+            part_number:
+              $ref: '#/components/schemas/PartCount'
+              description: Номер части, не больше total_parts.
+            total_parts: {$ref: '#/components/schemas/PartCount'}
+          dependentRequired:
+            part_number: [total_parts]
+            total_parts: [part_number]
+          if:
+            required: [part_number]
+          then:
+            properties:
+              error: {const: false}
+    OutlineEvent:
+      allOf:
+        - {$ref: '#/components/schemas/Result'}
+        - properties:
+            reason:
+              const: timeout
+              description: Приложение добавляет это поле при истечении времени ожидания.
+          if:
+            required: [reason]
+          then:
+            properties:
+              error: {const: true}
+        - properties:
+            progress:
+              type: object
+              required: [received, total]
+              properties:
+                received:
+                  $ref: '#/components/schemas/PartCount'
+                  description: Число уникальных полученных частей, не больше total.
+                total: {$ref: '#/components/schemas/PartCount'}
+          if:
+            required: [progress]
+          then:
+            properties:
+              error: {const: false}
