@@ -2,6 +2,9 @@ import { isIPv4 } from 'node:net';
 import express from 'express';
 import type { ErrorRequestHandler } from 'express';
 import session from 'express-session';
+import { readFileSync } from 'node:fs';
+import swaggerUi from 'swagger-ui-express';
+import { parse } from 'yaml';
 import { outlineRoutes, receiveOutlineResult } from './src/server/outlineRoutes.ts';
 import { SESSION_COOKIE, sessionRoutes } from './src/server/sessionRoutes.ts';
 
@@ -59,6 +62,14 @@ app.use(session({
   cookie: { httpOnly: true, sameSite: 'lax' },
 }));
 app.use('/api', sessionRoutes(users), outlineRoutes(transportUrl.href, timeoutMs));
+
+const specPath = new URL('./openapi.yaml', import.meta.url);
+const spec = parse(readFileSync(specPath, 'utf8'));
+
+app.use('/api', swaggerUi.serve);
+app.get('/api', swaggerUi.setup(spec, {
+  swaggerOptions: { validatorUrl: null },
+}));
 
 const handleError: ErrorRequestHandler = (error, _request, response, next) => {
   if (response.headersSent) return next(error);
